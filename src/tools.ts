@@ -1,9 +1,30 @@
+/**
+ * MCP Tool Definitions
+ * 
+ * This module configures all available tools for the MCP server.
+ * Each tool is registered with the server with input schemas and handlers.
+ */
+
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { getPrFileChanges, postPrComment } from "./azureDevOps.js";
+import { AzureDevOpsHelper } from "./azureDevOps.js";
+import { AuthOptions } from './models.js';
 
-export function configureAllTools(server: McpServer): void {
+/**
+ * Configure all MCP tools on the server
+ * 
+ * Registers the following tools:
+ * 1. get_pr_changes - Fetches all file changes in a PR with unified diffs
+ * 2. post_pr_comment - Posts comments to PR threads
+ * 
+ * @param server - The MCP server instance to configure tools on
+ */
+export function configureAllTools(server: McpServer, tokenProvider: () => Promise<AuthOptions>) {
+  // =============================================================================
   // Tool 1: Get PR Changes
+  // =============================================================================
+  // Fetches all file changes in a pull request, including unified diffs
+  // for each modified file. Useful for code review and analysis.
   server.tool(
     "get_pr_changes",
     "Fetches all file changes in an Azure DevOps pull request with diffs",
@@ -12,8 +33,11 @@ export function configureAllTools(server: McpServer): void {
     },
     async (input) => {
       try {
-        const changes = await getPrFileChanges(input.prUrl);
+        // Fetch all file changes with diffs from Azure DevOps
+        const adoHelper = new AzureDevOpsHelper(input.prUrl, tokenProvider);
+        const changes = await adoHelper.getPrFileChanges();
 
+        // Return successful response with change details
         return {
           content: [
             {
@@ -31,6 +55,7 @@ export function configureAllTools(server: McpServer): void {
           ],
         };
       } catch (error) {
+        // Handle errors and return error response
         const errorMessage = error instanceof Error ? error.message : String(error);
         return {
           content: [
@@ -45,7 +70,11 @@ export function configureAllTools(server: McpServer): void {
     }
   );
 
+  // =============================================================================
   // Tool 2: Post PR Comment
+  // =============================================================================
+  // Posts a comment to a specific location in a PR file.
+  // Creates a new thread at the specified line and offset positions.
   server.tool(
     "post_pr_comment",
     "Posts a comment to an Azure DevOps pull request thread",
@@ -60,7 +89,8 @@ export function configureAllTools(server: McpServer): void {
     },
     async (input) => {
       try {
-        await postPrComment({
+        // Post the comment to Azure DevOps PR thread
+        const prCommentOptions = {
           prUrl: input.prUrl,
           comment: input.comment,
           filePath: input.filePath,
@@ -68,8 +98,11 @@ export function configureAllTools(server: McpServer): void {
           rightFileStartOffset: input.rightFileStartOffset,
           rightFileEndLine: input.rightFileEndLine,
           rightFileEndOffset: input.rightFileEndOffset,
-        });
+        };
+        const adoHelper = new AzureDevOpsHelper(input.prUrl, tokenProvider);
+        await adoHelper.postPrComment(prCommentOptions);
 
+        // Return success response
         return {
           content: [
             {
@@ -79,6 +112,7 @@ export function configureAllTools(server: McpServer): void {
           ],
         };
       } catch (error) {
+        // Handle errors and return error response
         const errorMessage = error instanceof Error ? error.message : String(error);
         return {
           content: [

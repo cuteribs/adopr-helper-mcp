@@ -17,9 +17,12 @@ import { configureAllTools } from "./tools.js";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { createAuthenticator } from './auth.js';
+import { createRequire } from 'module';
 
-const packageVersion = "0.1.0";
-const mcpServerName = "Azure DevOps PR Helper MCP Server";
+const require = createRequire(import.meta.url);
+const packageJson = require('../package.json');
+const packageVersion = packageJson.version;
+const mcpServerName = `Azure DevOps PR Helper MCP Server v${packageVersion}`;
 
 const argv = yargs(hideBin(process.argv))
   .scriptName("mcp-server-adopr-helper")

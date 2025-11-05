@@ -1,6 +1,6 @@
 {
-  "name": "@dnv/adopr-helper-mcp",
-  "version": "0.1.0",
+  "name": "@cuteribs/adopr-helper-mcp",
+  "version": "1.0.2",
   "description": "A Model Context Protocol (MCP) server for Azure DevOps PR operations",
   "type": "module",
   "main": "dist/index.js",
@@ -14,7 +14,8 @@
     "test": "jest",
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix",
-    "clean": "rimraf dist"
+    "clean": "rimraf dist",
+    "publish": "npm publish --access public"
   },
   "keywords": [
     "mcp",
@@ -24,8 +25,6 @@
     "azure-devops",
     "pull-request"
   ],
-  "author": "DNV",
-  "license": "MIT",
   "dependencies": {
     "@azure/msal-node": "3.8.0",
     "@modelcontextprotocol/sdk": "^1.17.5",

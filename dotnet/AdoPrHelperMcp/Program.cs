@@ -1,7 +1,5 @@
 ﻿using AdoPrHelperMcp.Auth;
 using AdoPrHelperMcp.Mcp;
-using ModelContextProtocol;
-using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.CommandLine;
 using System.Reflection;
@@ -38,15 +36,15 @@ class Program
 		};
 
 		rootCommand.Options.Add(authOption);
-		var arguments = rootCommand.Parse(args);
 
-		rootCommand.SetAction(async (x) =>
+		rootCommand.SetAction(x =>
 		{
-			var authType = x.GetValue<string>(authOption) ?? "interactive";
-			await RunServerAsync(authType, version);
-		}, authOption);
+			var authType = x.GetValue(authOption) ?? "interactive";
+			RunServerAsync(authType, version).GetAwaiter().GetResult();
+		});
 
-		return await rootCommand.InvokeAsync(args);
+		var result = rootCommand.Parse(args);
+		return await result.InvokeAsync();
 	}
 
 	static async Task RunServerAsync(string authenticationType, string version)

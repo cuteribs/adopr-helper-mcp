@@ -1,8 +1,8 @@
-# Azure DevOps PR Helper - .NET 8 MCP Server Conversion
+# Azure DevOps PR Helper - .NET 8 MCP Server
 
-This project is a **work-in-progress** conversion of the TypeScript `adopr-helper-mcp` MCP server to .NET 8.
+This is a **fully functional** .NET 8 implementation of the `adopr-helper-mcp` MCP server, enhanced with file system storage capabilities for the ai-pr-reviewer skill.
 
-## Current Status
+## Current Status: ✅ Production Ready
 
 ### ✅ Completed Components
 
@@ -17,9 +17,11 @@ This project is a **work-in-progress** conversion of the TypeScript `adopr-helpe
 2. **Models** (`Models/` directory)
    - ✅ `AuthOptions.cs` - Authentication configuration
    - ✅ `PrInfo.cs` - PR URL parsing results
-   - ✅ `PullRequest.cs` - Azure DevOps PR details
+   - ✅ `PullRequest.cs` - Azure DevOps PR details with metadata
    - ✅ `GitModels.cs` - Git changes and file items
    - ✅ `PrCommentModels.cs` - PR comment and thread structures
+   - ✅ `ManifestModels.cs` - Manifest data structures for file storage
+   - ✅ `ErrorModels.cs` - Standardized error responses
 
 3. **Authentication** (`Auth/` directory)
    - ✅ `Authenticator.cs` - Complete implementation with:
@@ -32,54 +34,55 @@ This project is a **work-in-progress** conversion of the TypeScript `adopr-helpe
 4. **Azure DevOps Integration** (`Services/` directory)
    - ✅ `AzureDevOpsHelper.cs` - Complete implementation with:
      - PR URL parsing (both dev.azure.com and visualstudio.com formats)
-     - PR details fetching with validation
+     - PR details fetching with validation and metadata
      - File changes retrieval with filtering
-     - Unified diff generation using DiffPlex
-     - PR comment posting with threading support
+     - Unified diff generation with line statistics
+     - **NEW**: File system storage with escaped paths
+     - **NEW**: Manifest.json generation
+     - PR comment posting with severity support
      - Proper HTTP client management
-     - Error handling and validation
+     - Comprehensive error handling
+   - ✅ `PathUtils.cs` - Path escaping utilities
 
-5. **Documentation**
+5. **MCP Server Integration** (`Mcp/McpTools.cs` and `Program.cs`)
+   - ✅ Tool registration with proper schemas
+   - ✅ `azure_devops_fetch_pr_changes` - Fetch PR files and save to disk
+   - ✅ `azure_devops_post_comment` - Post review comments with severity
+   - ✅ Snake_case parameter naming
+   - ✅ Standardized error responses
+   - ✅ Stdio transport integration
+
+6. **Documentation**
    - ✅ Comprehensive `README.md` with usage instructions
+   - ✅ Tool documentation with examples
+   - ✅ Manifest structure documentation
+   - ✅ Error code reference
    - ✅ `.gitignore` for .NET projects
    - ✅ XML documentation comments throughout the code
 
-### ⚠️ Incomplete/Issues
+## Key Features
 
-1. **MCP Server Integration** (`Mcp/McpTools.cs` and `Program.cs`)
-   - The .NET `ModelContextProtocol` SDK (v0.4.0-preview.3) has a different API structure than expected
-   - Current implementation attempts to use events (`ListToolsAsync`, `CallToolAsync`) but the actual SDK API is different
-   - The SDK is in preview and lacks comprehensive documentation
-   - **Recommendation**: Wait for a stable version of the .NET MCP SDK or refer to official examples
+### 🚀 Enhanced for ai-pr-reviewer Skill
 
-2. **System.CommandLine API**
-   - The `System.CommandLine` API has changed in the RC version
-   - Command-line argument parsing needs to be updated to match the current API
+This implementation follows the `mcp-integration.md` specification:
 
-### 📋 What Needs to be Done
+1. **File System Storage** - Files are written to disk, not returned in responses
+2. **Path Escaping** - Uses `~~~` separator (e.g., `src~~~services~~~UserService.cs`)
+3. **Manifest Generation** - Creates comprehensive `manifest.json` with metadata
+4. **Small Responses** - Returns summaries only, preventing context overflow
+5. **Severity Support** - Comments can have severity levels (Critical, High, Medium, Low)
+6. **Standardized Errors** - Consistent error codes and messages
 
-To complete this project, the following needs to be addressed:
+### 📊 Manifest Structure
 
-1. **Research the correct .NET MCP SDK API**
-   - Find official examples or documentation for ModelContextProtocol v0.4.0-preview.3
-   - Understand the correct way to:
-     - Create an MCP server instance
-     - Register tools with input schemas
-     - Handle tool invocations
-     - Connect via stdio transport
-
-2. **Fix System.CommandLine Usage**
-   - Update command-line parsing to match the RC2 API
-   - Properly configure options and handlers
-
-3. **Testing**
-   - Create unit tests for core functionality
-   - Test with actual Azure DevOps PRs
-   - Verify MCP client integration
+The manifest.json includes:
+- PR metadata (title, author, description, status)
+- Branch information (source, target)
+- Timestamps (created, fetched)
+- Statistics (total files, sizes, change breakdown)
+- Per-file metadata (paths, sizes, line counts)
 
 ## Architecture
-
-The project follows clean architecture principles:
 
 ```
 AdoPrHelperMcp/
@@ -88,101 +91,89 @@ AdoPrHelperMcp/
 │   ├── PrInfo.cs
 │   ├── PullRequest.cs
 │   ├── GitModels.cs
-│   └── PrCommentModels.cs
+│   ├── PrCommentModels.cs
+│   ├── ManifestModels.cs
+│   └── ErrorModels.cs
 ├── Auth/                # ✅ Authentication services
 │   └── Authenticator.cs
 ├── Services/            # ✅ Business logic
-│   └── AzureDevOpsHelper.cs
-├── Mcp/                 # ⚠️ MCP server configuration (incomplete)
+│   ├── AzureDevOpsHelper.cs
+│   └── PathUtils.cs
+├── Mcp/                 # ✅ MCP server configuration
 │   └── McpTools.cs
-├── Program.cs           # ⚠️ Entry point (incomplete)
+├── Program.cs           # ✅ Entry point
 └── README.md            # ✅ Documentation
 ```
 
-## Core Functionality (Ready)
+## Available Tools
 
-The following core components are **fully implemented and tested-ready**:
+### azure_devops_fetch_pr_changes
 
-### Authentication
-```csharp
-// Create PAT authenticator
-var authenticator = new PatAuthenticator("your-pat-token");
+Fetches all changed files from a PR and saves to local folder.
 
-// Or create OAuth authenticator
-var authenticator = new OAuthAuthenticator();
+**Input:**
+- `pr_url` (string): Full Azure DevOps PR URL
+- `output_folder` (string): Local folder path for output
 
-// Get auth options
-var authOptions = await authenticator.GetAuthOptionsAsync();
-```
+**Output:**
+Small response with summary statistics (NOT file contents)
 
-### Azure DevOps Operations
-```csharp
-// Create helper
-var prUrl = "https://dev.azure.com/org/project/_git/repo/pullrequest/123";
-var helper = new AzureDevOpsHelper(prUrl, authenticator);
+### azure_devops_post_comment
 
-// Get PR file changes with diffs
-var changes = await helper.GetPrFileChangesAsync();
-foreach (var change in changes)
-{
-    Console.WriteLine($"File: {change.FilePath}");
-    Console.WriteLine($"Patch:\n{change.Patch}");
-}
+Posts a review comment to a specific file and line.
 
-// Post a comment
-var commentOptions = new PrCommentOptions
-{
-    PrUrl = prUrl,
-    Comment = "Please fix this issue",
-    FilePath = "src/main.cs",
-    RightFileStartLine = 10,
-    RightFileStartOffset = 1,
-    RightFileEndLine = 10,
-    RightFileEndOffset = 20
-};
-await helper.PostPrCommentAsync(commentOptions);
-```
-
-## Next Steps for Completion
-
-1. **Option A: Wait for Stable SDK**
-   - Monitor the `ModelContextProtocol` package for a stable release
-   - Update implementation once official documentation is available
-
-2. **Option B: Study Official Examples**
-   - Search for official .NET MCP SDK examples on GitHub
-   - Adapt the implementation based on working examples
-
-3. **Option C: Implement Custom Protocol**
-   - Implement the MCP protocol directly without the SDK
-   - Handle JSON-RPC communication manually over stdio
-   - More control but more complex
+**Input:**
+- `pr_url` (string): Full Azure DevOps PR URL
+- `file_path` (string): File path to comment on
+- `line_number` (number): Line number
+- `comment_text` (string): Comment content
+- `severity` (string, optional): Critical, High, Medium, Low
+- `thread_status` (string, optional): active, fixed, wontFix, closed
 
 ## Building the Project
-
-Even though the MCP integration is incomplete, you can build the core functionality:
 
 ```bash
 cd AdoPrHelperMcp
 dotnet build
+dotnet run
 ```
 
-The core services (`AzureDevOpsHelper`, authentication) can be used independently in other .NET projects.
+## Testing
 
-## Dependencies
+```bash
+# Build
+dotnet build
 
-- .NET 8 SDK
-- NuGet packages (see `.csproj`)
+# Run with PAT authentication
+export AZURE_DEVOPS_PAT="your-pat"
+dotnet run -- --authentication pat
+```
+
+## Configuration
+
+See README.md for detailed configuration instructions for:
+- GitHub Copilot in VS Code
+- Claude Desktop
+- Other MCP clients
+
+## Recent Changes (2026-01-22)
+
+✅ **MCP Integration for ai-pr-reviewer**
+- Renamed tools to match convention (`azure_devops_*`)
+- Changed all parameters to snake_case
+- Implemented file system storage with path escaping
+- Added comprehensive manifest generation
+- Added severity support for comments
+- Implemented standardized error handling
+- Updated all documentation
 
 ## Original TypeScript Implementation
 
-This is a conversion from: https://github.com/cuteribs/adopr-helper-mcp
-
-The TypeScript version uses `@modelcontextprotocol/sdk` which has a mature, stable API. The .NET SDK is newer and still evolving.
+Converted from: https://github.com/cuteribs/adopr-helper-mcp
 
 ## Contributing
 
-If you have experience with the .NET MCP SDK, contributions to complete the MCP server integration are welcome!
+Contributions are welcome! The project is fully functional and ready for use.
 
 ## License
 

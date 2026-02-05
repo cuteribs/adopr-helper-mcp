@@ -6,6 +6,7 @@
 		<ImplicitUsings>enable</ImplicitUsings>
 		<LangVersion>Latest</LangVersion>
 		<Nullable>enable</Nullable>
+		<VersionPrefix>2.0.0</VersionPrefix>
 	</PropertyGroup>
 
 	<ItemGroup>

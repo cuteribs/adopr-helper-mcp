@@ -77,7 +77,7 @@ public record PrCommentOptions
     /// <summary>
     /// Comment text to post
     /// </summary>
-    public required string Comment { get; init; }
+    public required string CommentText { get; init; }
 
     /// <summary>
     /// File to attach comment to
@@ -85,22 +85,17 @@ public record PrCommentOptions
     public required string FilePath { get; init; }
 
     /// <summary>
-    /// Start line number
+    /// Line number to attach comment to
     /// </summary>
-    public required int RightFileStartLine { get; init; }
+    public required int LineNumber { get; init; }
 
     /// <summary>
-    /// Offset in start line
+    /// Severity level (Critical, High, Medium, Low)
     /// </summary>
-    public required int RightFileStartOffset { get; init; }
+    public string? Severity { get; init; }
 
     /// <summary>
-    /// End line number
+    /// Thread status (active, fixed, wontFix, closed)
     /// </summary>
-    public required int RightFileEndLine { get; init; }
-
-    /// <summary>
-    /// Offset in end line
-    /// </summary>
-    public required int RightFileEndOffset { get; init; }
+    public string? ThreadStatus { get; init; }
 }

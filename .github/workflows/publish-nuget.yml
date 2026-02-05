@@ -20,19 +20,6 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Pack
-        working-directory: dotnet/AdoPrHelperMcp
-        run: |
-          mkdir -p ./nupkg
-          dotnet build --configuration Release
-          dotnet pack --configuration Release --no-build -o ./nupkg
-
-      - name: Push to NuGet.org
-        env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
-        run: |
-          dotnet nuget push ./nupkg/*.nupkg --api-key $NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
-
       - name: Create Packages
         working-directory: dotnet/AdoPrHelperMcp
         env:
@@ -51,7 +38,7 @@ jobs:
           name: $BUILD_VERSION
           if-no-files-found: error
           retention-days: 7
-          path: dotnet/AdoPrHelperMcp/${{ env.NUGET_OUTPUT }}/*.symbols.nupkg
+          path: ${{ env.NUGET_OUTPUT }}/*.symbols.nupkg
       
       - name: Push NuGet Packages
         working-directory: dotnet/AdoPrHelperMcp

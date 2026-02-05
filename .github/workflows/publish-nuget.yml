@@ -38,13 +38,13 @@ jobs:
           name: $BUILD_VERSION
           if-no-files-found: error
           retention-days: 7
-          path: ${{ env.NUGET_OUTPUT }}/*.symbols.nupkg
+          path: dotnet/AdoPrHelperMcp/${{ env.NUGET_OUTPUT }}/*.symbols.nupkg
       
       - name: Push NuGet Packages
         working-directory: dotnet/AdoPrHelperMcp
         run: |
           dotnet nuget push \
-            --skip-duplicate '${{ env.NUGET_OUTPUT }}/*.symbols.nupkg' \
+            --skip-duplicate ${{ env.NUGET_OUTPUT }}/*.symbols.nupkg \
             --api-key ${{ secrets.NUGET_API_KEY }} \
             --source https://api.nuget.org/v3/index.json
       

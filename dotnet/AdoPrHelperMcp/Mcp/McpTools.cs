@@ -106,7 +106,7 @@ public static class McpTools
 				CallToolHandler = async (request, _) =>
 				{
 					var toolName = request.Params?.Name;
-					var args = request.Params?.Arguments;
+					var args = request.Params?.Arguments?.AsReadOnly();
 
 					if (toolName != null && args != null)
 					{
@@ -255,7 +255,7 @@ public static class McpTools
 	{
 		return new()
 		{
-			Content = [new TextContentBlock { Text = text, Type = "text" }],
+			Content = [new TextContentBlock { Text = text }],
 			IsError = isError
 		};
 	}

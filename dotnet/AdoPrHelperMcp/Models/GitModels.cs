@@ -84,7 +84,27 @@ public record FilePatch
     public string? SourceContent { get; init; }
 
     /// <summary>
+    /// New file content (optional)
+    /// </summary>
+    public string? NewContent { get; init; }
+
+    /// <summary>
     /// Unified diff patch
     /// </summary>
     public required string Patch { get; init; }
+
+    /// <summary>
+    /// Change type (add, edit, delete, rename)
+    /// </summary>
+    public required string ChangeType { get; init; }
+
+    /// <summary>
+    /// Number of lines added
+    /// </summary>
+    public int LinesAdded { get; init; }
+
+    /// <summary>
+    /// Number of lines deleted
+    /// </summary>
+    public int LinesDeleted { get; init; }
 }

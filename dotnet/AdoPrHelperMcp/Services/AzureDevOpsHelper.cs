@@ -18,7 +18,8 @@ namespace AdoPrHelperMcp.Services;
 /// </summary>
 public partial class AzureDevOpsHelper
 {
-    private const string ApiVersion = "7.1";
+	private const string PathSeparator = "~~~";
+	private const string ApiVersion = "7.1";
     private readonly string _prUrl;
     private readonly IAuthenticator _authenticator;
     private readonly HttpClient _httpClient;
@@ -31,24 +32,122 @@ public partial class AzureDevOpsHelper
     }
 
     /// <summary>
-    /// Get all file changes in a pull request with unified diffs
+    /// Fetch PR changes and save to disk with manifest
     /// 
     /// Process:
-    /// 1. Parse PR URL to extract organization, project, repo, and PR ID
-    /// 2. Fetch PR details to get source and target branches
-    /// 3. Fetch all Git changes (commits) between branches
-    /// 4. Filter to only supported changes (add/edit on blob files)
-    /// 5. Download file contents and generate unified diffs in parallel
+    /// 1. Parse PR URL and fetch PR metadata
+    /// 2. Fetch all file changes with diffs
+    /// 3. Save files to disk with escaped paths
+    /// 4. Generate manifest.json with metadata
+    /// 5. Return small response summary
     /// </summary>
-    public async Task<FilePatch[]> GetPrFileChangesAsync()
+    public async Task<FetchPrResponse> FetchPrChangesAsync(string outputFolder)
     {
+        // Create output directory if it doesn't exist
+        Directory.CreateDirectory(outputFolder);
+
         // Parse PR URL to extract components
         var prInfo = ParsePrUrl(_prUrl);
         var baseUrl = GetBaseUrl(prInfo.Organization, prInfo.Project, prInfo.Repository);
 
-        // Get PR details including source and target branches
+        // Get PR details including metadata
         var prDetailsUrl = GetPrDetailsUrl(baseUrl, prInfo.PullRequestId);
         var prDetails = await GetPrDetailsAsync(prDetailsUrl);
+
+        // Get all file changes
+        var filePatches = await GetPrFileChangesInternalAsync(prDetails, baseUrl);
+
+        // Calculate statistics
+        var changeBreakdown = CalculateChangeBreakdown(filePatches);
+        long totalBytes = 0;
+        var manifestFiles = new List<ManifestFile>();
+
+        // Save each file and diff to disk
+        foreach (var filePatch in filePatches)
+        {
+            var escapedName = EscapePath(filePatch.FilePath);
+            var diffName = $"{escapedName}.diff";
+
+            // Write full file content
+            if (!string.IsNullOrEmpty(filePatch.NewContent))
+            {
+                var filePath = Path.Combine(outputFolder, escapedName);
+                await File.WriteAllTextAsync(filePath, filePatch.NewContent);
+                totalBytes += filePatch.NewContent.Length;
+            }
+
+            // Write diff
+            var diffPath = Path.Combine(outputFolder, diffName);
+            await File.WriteAllTextAsync(diffPath, filePatch.Patch);
+            totalBytes += filePatch.Patch.Length;
+
+            // Add to manifest
+            manifestFiles.Add(new ManifestFile
+            {
+                OriginalPath = filePatch.FilePath,
+                EscapedName = escapedName,
+                DiffName = diffName,
+                ChangeType = filePatch.ChangeType,
+                SizeBytes = filePatch.NewContent?.Length ?? 0,
+                DiffSizeBytes = filePatch.Patch.Length,
+                LinesAdded = filePatch.LinesAdded,
+                LinesDeleted = filePatch.LinesDeleted
+            });
+        }
+
+        // Create manifest
+        var manifest = new ManifestData
+        {
+            PrUrl = _prUrl,
+            PrId = prDetails.PullRequestId,
+            PrTitle = prDetails.Title ?? "",
+            PrDescription = prDetails.Description,
+            PrAuthor = new PrAuthor
+            {
+                DisplayName = prDetails.CreatedBy?.DisplayName ?? "Unknown",
+                Email = prDetails.CreatedBy?.UniqueName ?? ""
+            },
+            PrStatus = prDetails.Status,
+            SourceBranch = prDetails.SourceRefName.Replace("refs/heads/", ""),
+            TargetBranch = prDetails.TargetRefName.Replace("refs/heads/", ""),
+            CreatedDate = prDetails.CreationDate ?? DateTime.UtcNow.ToString("o"),
+            FetchTimestamp = DateTime.UtcNow.ToString("o"),
+            Statistics = new ChangeStatistics
+            {
+                TotalFiles = filePatches.Length,
+                TotalSizeBytes = totalBytes,
+                Changes = changeBreakdown
+            },
+            Files = manifestFiles.ToArray()
+        };
+
+        // Save manifest to disk
+        var manifestPath = Path.Combine(outputFolder, "manifest.json");
+        var manifestJson = JsonSerializer.Serialize(manifest, new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            WriteIndented = true
+        });
+        await File.WriteAllTextAsync(manifestPath, manifestJson);
+
+        // Return small response
+        return new FetchPrResponse
+        {
+            Success = true,
+            ManifestPath = manifestPath,
+            FilesSaved = filePatches.Length,
+            TotalBytes = totalBytes,
+            Summary = changeBreakdown
+        };
+    }
+
+    /// <summary>
+    /// Get all file changes in a pull request with unified diffs (internal)
+    /// </summary>
+    private async Task<FilePatch[]> GetPrFileChangesInternalAsync(PullRequest prDetails, string baseUrl)
+    {
+        // Parse PR URL to extract components
+        var prInfo = ParsePrUrl(_prUrl);
         
         var sourceBranch = Uri.EscapeDataString(prDetails.SourceRefName.Replace("refs/heads/", ""));
         var targetBranch = Uri.EscapeDataString(prDetails.TargetRefName.Replace("refs/heads/", ""));
@@ -70,7 +169,6 @@ public partial class AzureDevOpsHelper
         // Filter to only process supported file types (add/edit on blob files)
         var fileItems = changes
             .Where(IsSupportedChange)
-            .Select(c => c.Item)
             .ToArray();
 
         if (fileItems.Length == 0)
@@ -79,17 +177,31 @@ public partial class AzureDevOpsHelper
         }
 
         // Download all files and generate diffs in parallel
-        var getFileTasks = fileItems.Select(f => GetFilePatchAsync(f, baseUrl));
+        var getFileTasks = fileItems.Select(c => GetFilePatchAsync(c, baseUrl));
         var fileChanges = await Task.WhenAll(getFileTasks);
         
         return fileChanges;
     }
 
     /// <summary>
+    /// Calculate change breakdown statistics
+    /// </summary>
+    private static ChangeBreakdown CalculateChangeBreakdown(FilePatch[] filePatches)
+    {
+        return new ChangeBreakdown
+        {
+            Added = filePatches.Count(f => f.ChangeType.Equals("add", StringComparison.OrdinalIgnoreCase)),
+            Modified = filePatches.Count(f => f.ChangeType.Equals("edit", StringComparison.OrdinalIgnoreCase)),
+            Deleted = filePatches.Count(f => f.ChangeType.Equals("delete", StringComparison.OrdinalIgnoreCase)),
+            Renamed = filePatches.Count(f => f.ChangeType.Equals("rename", StringComparison.OrdinalIgnoreCase))
+        };
+    }
+
+    /// <summary>
     /// Post a comment to a pull request thread
     /// 
-    /// Creates a new thread on a specific file at the specified line and offset.
-    /// The comment will be visible in the Azure DevOps PR interface.
+    /// Creates a new thread on a specific file at the specified line.
+    /// Supports severity levels and thread status.
     /// </summary>
     public async Task PostPrCommentAsync(PrCommentOptions options)
     {
@@ -98,28 +210,51 @@ public partial class AzureDevOpsHelper
         var baseUrl = GetBaseUrl(prInfo.Organization, prInfo.Project, prInfo.Repository);
         var threadUrl = GetThreadUrl(baseUrl, prInfo.PullRequestId);
 
+        // Format comment with severity if provided
+        var commentContent = FormatCommentWithSeverity(options.CommentText, options.Severity);
+
         // Build thread object with comment and file position
         var thread = new PrThread
         {
-            Comments = [new PrComment { Content = options.Comment }],
+            Comments = [new PrComment { Content = commentContent }],
             ThreadContext = new ThreadContext
             {
                 FilePath = options.FilePath,
                 RightFileStart = new FilePosition
                 {
-                    Line = options.RightFileStartLine,
-                    Offset = options.RightFileStartOffset
+                    Line = options.LineNumber,
+                    Offset = 1
                 },
                 RightFileEnd = new FilePosition
                 {
-                    Line = options.RightFileEndLine,
-                    Offset = options.RightFileEndOffset
+                    Line = options.LineNumber,
+                    Offset = 999
                 }
             }
         };
 
         // Post the thread to Azure DevOps
         await SendRequestAsync(threadUrl, HttpMethod.Post, thread, "Failed to create thread");
+    }
+
+    /// <summary>
+    /// Format comment with severity badge if provided
+    /// </summary>
+    private static string FormatCommentWithSeverity(string commentText, string? severity)
+    {
+        if (string.IsNullOrEmpty(severity))
+        {
+            return commentText;
+        }
+
+        // If comment already has severity formatting, return as-is
+        if (commentText.TrimStart().StartsWith("**["))
+        {
+            return commentText;
+        }
+
+        // Add severity badge to the beginning
+        return $"**[{severity}]**\n\n{commentText}";
     }
 
     #region Private Helper Methods
@@ -209,7 +344,7 @@ public partial class AzureDevOpsHelper
 
     private static bool IsSupportedChange(GitChange change)
     {
-        var supportedChangeTypes = new[] { "add", "edit" };
+        var supportedChangeTypes = new[] { "add", "edit", "delete", "rename" };
         return supportedChangeTypes.Contains(change.ChangeType, StringComparer.OrdinalIgnoreCase)
                && change.Item.GitObjectType.Equals("blob", StringComparison.OrdinalIgnoreCase)
                && !string.IsNullOrEmpty(change.Item.Path)
@@ -326,8 +461,9 @@ public partial class AzureDevOpsHelper
         return data.Changes ?? [];
     }
 
-    private async Task<FilePatch> GetFilePatchAsync(GitItem fileItem, string baseUrl)
+    private async Task<FilePatch> GetFilePatchAsync(GitChange gitChange, string baseUrl)
     {
+        var fileItem = gitChange.Item;
         var filePath = fileItem.Path;
         string? sourceContent = null;
         string? newContent = null;
@@ -346,18 +482,22 @@ public partial class AzureDevOpsHelper
             newContent = await GetBlobContentAsync(url);
         }
 
-        // Generate unified diff patch
-        var patch = GenerateUnifiedDiff(filePath, sourceContent ?? "", newContent ?? "");
+        // Generate unified diff patch and count lines
+        var (patch, linesAdded, linesDeleted) = GenerateUnifiedDiffWithStats(filePath, sourceContent ?? "", newContent ?? "");
         
         return new FilePatch
         {
             FilePath = filePath,
             SourceContent = sourceContent,
-            Patch = patch
+            NewContent = newContent,
+            Patch = patch,
+            ChangeType = gitChange.ChangeType,
+            LinesAdded = linesAdded,
+            LinesDeleted = linesDeleted
         };
     }
 
-    private static string GenerateUnifiedDiff(string fileName, string oldText, string newText)
+    private static (string patch, int linesAdded, int linesDeleted) GenerateUnifiedDiffWithStats(string fileName, string oldText, string newText)
     {
         var differ = new Differ();
         var builder = new InlineDiffBuilder(differ);
@@ -371,6 +511,8 @@ public partial class AzureDevOpsHelper
         var newLineNumber = 1;
         var hunkStart = 0;
         var hunkLines = new List<string>();
+        int linesAdded = 0;
+        int linesDeleted = 0;
 
         foreach (var line in diff.Lines)
         {
@@ -394,6 +536,7 @@ public partial class AzureDevOpsHelper
                         hunkStart = oldLineNumber;
                     }
                     hunkLines.Add($"-{line.Text}");
+                    linesDeleted++;
                     oldLineNumber++;
                     break;
 
@@ -403,6 +546,7 @@ public partial class AzureDevOpsHelper
                         hunkStart = newLineNumber;
                     }
                     hunkLines.Add($"+{line.Text}");
+                    linesAdded++;
                     newLineNumber++;
                     break;
 
@@ -413,6 +557,8 @@ public partial class AzureDevOpsHelper
                     }
                     hunkLines.Add($"-{line.Text}");
                     hunkLines.Add($"+{line.Text}");
+                    linesDeleted++;
+                    linesAdded++;
                     oldLineNumber++;
                     newLineNumber++;
                     break;
@@ -425,7 +571,7 @@ public partial class AzureDevOpsHelper
             WriteHunk(sb, hunkStart, oldLineNumber - hunkStart, newLineNumber - hunkStart, hunkLines);
         }
 
-        return sb.ToString();
+        return (sb.ToString(), linesAdded, linesDeleted);
     }
 
     private static void WriteHunk(StringBuilder sb, int oldStart, int oldCount, int newCount, List<string> lines)
@@ -435,7 +581,19 @@ public partial class AzureDevOpsHelper
         {
             sb.AppendLine(line);
         }
-    }
+	}
 
-    #endregion
+	/// <summary>
+	/// Escapes a file path by replacing / and \ with ~~~
+	/// </summary>
+	/// <param name="filePath">Original file path</param>
+	/// <returns>Escaped file path</returns>
+	private static string EscapePath(string filePath)
+	{
+		return filePath
+			.Replace("/", PathSeparator)
+			.Replace("\\", PathSeparator);
+	}
+
+	#endregion
 }

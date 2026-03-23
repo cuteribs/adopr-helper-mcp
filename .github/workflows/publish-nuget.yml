@@ -1,0 +1,50 @@
+name: Build and Publish NuGet
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version
+        required: true
+env:
+  NUGET_OUTPUT: Artifacts/NuGet
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Create Packages
+        working-directory: dotnet/AdoPrHelperMcp
+        env:
+          BUILD_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          dotnet pack \
+            -c Release \
+            -o ${{ env.NUGET_OUTPUT }} \
+            --include-symbols \
+            --include-source \
+            -p:Version=$BUILD_VERSION
+      
+      - name: Upload Packages to Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.event.inputs.version }}
+          if-no-files-found: error
+          retention-days: 7
+          path: dotnet/AdoPrHelperMcp/${{ env.NUGET_OUTPUT }}/*.symbols.nupkg
+      
+      - name: Push NuGet Packages
+        working-directory: dotnet/AdoPrHelperMcp
+        run: |
+          dotnet nuget push \
+            --skip-duplicate ${{ env.NUGET_OUTPUT }}/*.symbols.nupkg \
+            --api-key ${{ secrets.NUGET_API_KEY }} \
+            --source https://api.nuget.org/v3/index.json
+      

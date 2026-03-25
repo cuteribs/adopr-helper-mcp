@@ -22,7 +22,7 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const packageJson = require('../package.json');
 const packageVersion = packageJson.version;
-const mcpServerName = `Azure DevOps PR Helper MCP Server v${packageVersion}`;
+const mcpServerName = `Azure DevOps PR Helper MCP Server`;
 
 const argv = yargs(hideBin(process.argv))
   .scriptName("mcp-server-adopr-helper")

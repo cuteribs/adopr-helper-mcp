@@ -1,6 +1,6 @@
 {
   "name": "@cuteribs/adopr-helper-mcp",
-  "version": "1.0.2",
+  "version": "1.0.0",
   "description": "A Model Context Protocol (MCP) server for Azure DevOps PR operations",
   "type": "module",
   "main": "dist/index.js",

@@ -14,8 +14,8 @@ import { AuthOptions } from './models.js';
  * Configure all MCP tools on the server
  * 
  * Registers the following tools:
- * 1. get_pr_changes - Fetches all file changes in a PR with unified diffs
- * 2. post_pr_comment - Posts comments to PR threads
+ * 1. azure_devops_fetch_pr_changes - Fetches all file changes in a PR with unified diffs
+ * 2. azure_devops_post_comment - Posts comments to PR threads
  * 
  * @param server - The MCP server instance to configure tools on
  */
@@ -26,7 +26,7 @@ export function configureAllTools(server: McpServer, tokenProvider: () => Promis
   // Fetches all file changes in a pull request, including unified diffs
   // for each modified file. Useful for code review and analysis.
   server.tool(
-    "get_pr_changes",
+    "azure_devops_fetch_pr_changes",
     "Fetches all file changes in an Azure DevOps pull request with diffs",
     {
       prUrl: z.string().describe("The full URL of the Azure DevOps pull request"),
@@ -76,7 +76,7 @@ export function configureAllTools(server: McpServer, tokenProvider: () => Promis
   // Posts a comment to a specific location in a PR file.
   // Creates a new thread at the specified line and offset positions.
   server.tool(
-    "post_pr_comment",
+    "azure_devops_post_comment",
     "Posts a comment to an Azure DevOps pull request thread",
     {
       prUrl: z.string().describe("The full URL of the Azure DevOps pull request"),
